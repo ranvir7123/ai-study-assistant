@@ -1,11 +1,10 @@
 from fastapi import FastAPI
+from app.routes.generate import router as generate_router
 
 app = FastAPI()
 
-@app.get("/")
-def home():
-    return {"message": "FastAPI working"}
+app.include_router(generate_router)
 
-@app.get("/add")
-def add(a: int, b: int):
-    return {"sum": a + b}
+@app.get("/health")
+def health():
+    return {"status": "ok"}
