@@ -7,3 +7,5 @@ class GenerateRequest(BaseModel):
 
 class GenerateResponse(BaseModel):
     explanation:str
+
+    
