@@ -1,90 +1,204 @@
-# AI Study Helper – RAG-Enabled Backend API (V2)
+AI Study Assistant – Intelligent Tutor Backend
 
-## Overview
+This project implements an intelligent tutoring backend built on a multi-stage RAG architecture. Traditional RAG systems retrieve context and generate answers directly, assuming the user understands all prerequisites. This often leads to over-explanation, shallow learning, or undetected misconceptions.
 
-This project is a backend AI study assistant that uses Retrieval-Augmented Generation (RAG). The system can generate explanations for new topics, store them as persistent knowledge, and later retrieve and reuse this stored information to produce grounded, context-aware answers. Over time, the assistant improves by learning new topics and leveraging existing knowledge instead of generating responses from scratch for every request.
+This system introduces a diagnosis stage before teaching. Instead of answering immediately, it generates diagnostic questions, analyzes user responses, and produces a structured Gap Report that classifies conceptual weaknesses (prerequisite, mechanism, application, misconception).
 
----
+Teaching is then performed selectively, retrieving and explaining only the missing concepts. Detected misconceptions are persisted and influence future diagnostic behavior, making the system adaptive over time.
 
-## What Problem Does This Project Solve?
+1. System Overview
 
-Large Language Models (LLMs) are stateless, meaning they do not remember past interactions or previously generated knowledge. As a result, they often produce generic answers, repeat information, or hallucinate facts. This project solves that problem by introducing persistent memory using a database and a retrieval pipeline. By retrieving relevant stored knowledge and injecting it into the prompt, the system produces more reliable, grounded, and consistent responses.
+This backend transforms a standard RAG pipeline into a reasoning-driven tutoring system. Rather than answering directly, the system inserts a structured diagnosis stage that evaluates user understanding before generating explanations.
 
----
+The architecture separates retrieval, diagnosis, analysis, teaching, and memory into distinct services. A structured Gap Report acts as the boundary between reasoning and generation, ensuring modularity, observability, and extensibility.
 
-## High-Level Architecture
+The result is a system that teaches selectively instead of exhaustively, detects conceptual weaknesses explicitly, and adapts future diagnostics based on persistent misconception patterns.
 
-The system follows a clear separation between learning (write path) and remembering (read path).
+2. Architecture Flow
 
-Request flow:
+The system follows a multi-stage pipeline:
 
-Client  
-→ `/generate` API endpoint  
-→ Retrieval (similarity search over stored knowledge)  
-→ Decision gate (similarity threshold)  
-→ RAG-based generation **or** fresh generation + storage  
-→ Response
+User Topic
+    ↓
+Canonical Knowledge Retrieval (Embeddings + Similarity)
+    ↓
+Diagnostic Question Generation
+    ↓
+User Answers
+    ↓
+Answer Analysis & Gap Classification
+    ↓
+Structured Gap Report
+    ↓
+Targeted Teaching (Precision RAG)
+    ↓
+Misconception Memory Update
 
-### Core Components
+Service Responsibilities
 
-- **Route Layer**
-  - Accepts user input
-  - Decides whether to use RAG or generate new knowledge
+routes/
+Handles HTTP requests and response formatting.
 
-- **Retrieval Service**
-  - Embeds the user query
-  - Computes similarity against stored embeddings
-  - Ranks relevant records
+retrieval_service.py
+Performs embedding-based similarity search over stored knowledge.
 
-- **RAG Service**
-  - Builds context from retrieved records
-  - Injects context into the LLM prompt
-  - Produces grounded responses
+embedding_service.py
+Converts text into vector embeddings.
 
-- **LLM Service**
-  - Handles interaction with the local LLM (Ollama)
-  - Contains separate functions for write-path and read-path generation
+diagnose_service.py
 
-- **Database**
-  - Stores explanations and their embeddings
-  - Acts as persistent memory for the system
+Generates diagnostic questions
 
----
+Evaluates answers
 
-## Retrieval-Augmented Generation (RAG)
+Produces structured Gap Reports
 
-RAG allows the system to ground LLM responses in previously stored knowledge. Before generating an answer, the system retrieves the most relevant explanations from the database and injects them into the prompt as context. This ensures that responses are based on known information rather than relying solely on the LLM’s internal training data.
+teaching_service.py
+Performs selective retrieval and generates focused explanations.
 
-A similarity threshold is used to determine whether retrieved knowledge is relevant enough. If it is, the system uses RAG. Otherwise, it generates a new explanation and stores it for future use.
+db_service.py
+Manages database interactions and misconception aggregation.
 
----
+db/models.py
+Defines persistence models, including MisconceptionRecord.
 
-## Learning vs Remembering
+Each service has a single responsibility and does not directly control other services.
 
-The system distinguishes between two modes of operation:
+3. Gap Classification Strategy
 
-### Learning (Write Path)
-- Triggered when no relevant knowledge exists
-- Generates a new explanation using the LLM
-- Embeds and stores the explanation in the database
+The system explicitly categorizes conceptual weaknesses into four types:
 
-### Remembering (Read Path)
-- Triggered when relevant knowledge is found
-- Retrieves stored explanations
-- Uses RAG to generate a grounded response
-- Does not store or embed the output
+Prerequisite Gaps
+Missing foundational knowledge required to understand the topic.
 
-This design prevents memory pollution and ensures that only canonical knowledge is stored.
+Mechanism Gaps
+Knows definitions but does not understand how the concept works internally.
 
----
+Application Gaps
+Understands theory but cannot apply it to solve problems.
 
-## API Endpoint
+Misconceptions
+Holds an incorrect mental model of the concept.
 
-### `POST /generate`
+This classification creates a structured intermediate representation (Gap Report), enabling:
 
-**Request Body**
-```json
-{
-  "topic": "arrays in C",
-  "level": "beginner"
-}
+Independent testing of diagnosis
+
+Memory persistence
+
+Selective teaching
+
+Future analytics
+
+Without structured classification, the system would collapse into a monolithic answer generator.
+
+4. Multi-Stage RAG Design
+
+This system uses RAG at multiple stages:
+
+Stage 1 — Grounded Diagnosis
+
+Retrieves canonical knowledge before generating diagnostic questions to prevent hallucinated probing.
+
+Stage 2 — Structured Evaluation
+
+Compares user responses against retrieved canonical context.
+
+Stage 3 — Precision Teaching
+
+Retrieves only missing concepts identified in the Gap Report and generates minimal, focused explanations.
+
+This layered RAG approach ensures:
+
+Controlled reasoning
+
+Reduced over-generation
+
+Clear separation between analysis and teaching
+
+5. Misconception Memory Layer
+
+The system persists recurring misconceptions using a MisconceptionRecord model containing:
+
+Topic
+
+Concept
+
+Gap type
+
+Frequency count
+
+Last detected timestamp
+
+When a misconception frequency increases, future diagnostic generation adapts by explicitly probing that weakness.
+
+This enables:
+
+Adaptive tutoring behavior
+
+Pattern aggregation
+
+Long-term system improvement
+
+No embeddings are used for memory storage; structured aggregation is sufficient.
+
+6. Architectural Tradeoffs
+Why SQLite?
+
+Fast iteration
+
+Low operational complexity
+
+Suitable for single-instance backend development
+
+Why No LangChain / Agent Frameworks?
+
+Manual orchestration ensures full control over reasoning flow
+
+Avoids abstraction leakage
+
+Improves interview explainability
+
+Why Separate Services?
+
+Enables modular testing
+
+Supports future scalability
+
+Prevents tight coupling between reasoning and generation
+
+The system prioritizes clarity and architectural discipline over rapid feature expansion.
+
+7. Scaling Strategy
+
+To scale this system:
+
+Replace SQLite with PostgreSQL
+
+Introduce a vector database (e.g., pgvector / dedicated vector store)
+
+Add async request handling
+
+Cache frequent retrieval queries
+
+Add user session tracking for personalization
+
+Separate diagnosis and teaching onto different model tiers
+
+The current design supports this transition because orchestration and reasoning layers are modular.
+
+8. Future Extensions (Agentic Direction)
+
+Future iterations may introduce:
+
+Multi-step adaptive tutoring loops
+
+Difficulty adjustment based on performance trends
+
+Automated concept dependency graphs
+
+Agent-based planning for curriculum sequencing
+
+Evaluation pipelines for gap detection accuracy
+
+The existing Gap Report abstraction enables these extensions without architectural overhaul.

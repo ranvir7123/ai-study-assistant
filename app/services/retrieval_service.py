@@ -13,6 +13,9 @@ from app.services.embedding_service import get_embedding
 from app.services.db_service import get_records
 import json
 
+SIMILARITY_THRESHOLD = 0.75  # Added threshold
+
+
 def retrieve_similar_records(query_text: str, top_k: int = 3):
     db = SessionLocal()
     try:
@@ -29,8 +32,13 @@ def retrieve_similar_records(query_text: str, top_k: int = 3):
 
         scored_records.sort(reverse=True, key=lambda x: x[0])
 
-        return scored_records[:top_k]
+        # NEW: filter by threshold
+        filtered_records = [
+            record for record in scored_records
+            if record[0] >= SIMILARITY_THRESHOLD
+        ]
 
+        return filtered_records[:top_k]
 
     finally:
         db.close()
